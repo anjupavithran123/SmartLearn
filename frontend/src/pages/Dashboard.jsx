@@ -1,42 +1,35 @@
-// src/pages/Dashboard.jsx
-import React, { useEffect, useState } from 'react';
-import { supabase } from '../supabaseClient';
+// simple redirect route
+import { Routes, Route, Navigate } from "react-router-dom";
 
-export default function Dashboard() {
-  const [profile, setProfile] = useState(null);
+<Route
+  path="/dashboard"
+  element={<DashboardRedirect />}
+/>
+
+// DashboardRedirect.jsx
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { authFetch } from '../services/auth';
+
+export default function DashboardRedirect() {
+  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
     (async () => {
-      const { data: userData } = await supabase.auth.getUser();
-      const userId = userData?.user?.id;
-      if (!userId) return;
-      const { data, error } = await supabase.from('profiles').select('full_name, role').eq('id', userId).single();
-      if (error) {
-        console.error(error);
-      } else {
-        setProfile(data);
-      }
+      try {
+        const res = await authFetch('http://localhost:4000/api/users/me');
+        if (!res.ok) { navigate('/login'); return; }
+        const { user } = await res.json();
+        if (user.role === 'tutor') navigate('/dashboard/tutor', { replace: true });
+        else navigate('/dashboard/student', { replace: true });
+      } catch (err) {
+        console.error(err);
+        navigate('/login');
+      } finally { setLoading(false); }
     })();
-  }, []);
+  }, [navigate]);
 
-  if (!profile) return <div>Loading profile...</div>;
-
-  return (
-    <div className="p-8">
-      <h1 className="text-2xl font-bold">Welcome, {profile.full_name || 'User'}!</h1>
-      <p className="mt-2">Role: <strong>{profile.role}</strong></p>
-
-      {profile.role === 'tutor' ? (
-        <div className="mt-6">
-          <h2 className="text-xl font-semibold">Tutor Dashboard</h2>
-          <p>Create courses, manage students, etc.</p>
-        </div>
-      ) : (
-        <div className="mt-6">
-          <h2 className="text-xl font-semibold">Student Dashboard</h2>
-          <p>Browse courses, enroll, track progress.</p>
-        </div>
-      )}
-    </div>
-  );
+  if (loading) return <div>Loading...</div>;
+  return null;
 }

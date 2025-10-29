@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
-import { login } from '../services/auth'; // <- use centralized auth service
+import { login } from '../services/auth';
+import { supabase } from '../supabaseClient'; // ✅ Add this import if you have Supabase setup
 
 export default function Login() {
   const navigate = useNavigate();
@@ -10,8 +11,9 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const handleChange = (e) =>
+  const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -23,21 +25,62 @@ export default function Login() {
     }
 
     setLoading(true);
+
     try {
-      // call the service that hits your backend
+      console.log('🔸 Login attempt:', form);
       const data = await login({ email: form.email, password: form.password });
-      // expected data: { user, token }
-      if (data?.token) {
-        localStorage.setItem('token', data.token);
+      console.log('✅ Backend login response:', data);
+
+      // extract tokens
+      const token =
+        data?.token ||
+        data?.accessToken ||
+        data?.access_token ||
+        data?.jwt ||
+        null;
+
+      const refresh =
+        data?.refresh_token ||
+        data?.refreshToken ||
+        null;
+
+      // store in localStorage
+      if (token) {
+        localStorage.setItem('token', token);
       }
-      // optionally persist user object
-      try { localStorage.setItem('user', JSON.stringify(data.user)); } catch (e) {}
+
+      if (data?.user) {
+        try {
+          localStorage.setItem('user', JSON.stringify(data.user));
+        } catch (err) {
+          console.warn('Could not store user:', err);
+        }
+      }
+
+      // ✅ Optional: sync Supabase session (only if you’re using Supabase Auth)
+      if (token && refresh && typeof supabase !== 'undefined') {
+        try {
+          await supabase.auth.setSession({
+            access_token: token,
+            refresh_token: refresh,
+          });
+          console.log('🔹 Supabase session set successfully');
+        } catch (err) {
+          console.error('Failed to set Supabase session:', err);
+        }
+      }
 
       // redirect after successful login
-      navigate('/dashboard');
+      if (token) {
+        console.log('➡️ Navigating to /dashboard');
+        navigate('/dashboard', { replace: true });
+      } else {
+        console.warn('⚠️ No token returned from backend');
+        setError('Login succeeded but no token was returned from server.');
+      }
     } catch (err) {
-      // `services/auth.js` throws an Error with message, or you might get an object
-      setError(err.message || err.error || 'Invalid login credentials');
+      console.error('❌ Login error:', err);
+      setError(err?.message || 'Invalid login credentials');
     } finally {
       setLoading(false);
     }
@@ -67,9 +110,7 @@ export default function Login() {
         />
 
         {/* Password */}
-        <label className="block mb-1 text-gray-700 font-semibold">
-          Password
-        </label>
+        <label className="block mb-1 text-gray-700 font-semibold">Password</label>
         <div className="relative mb-4">
           <input
             name="password"
@@ -98,7 +139,7 @@ export default function Login() {
           {loading ? 'Logging in...' : 'Login'}
         </button>
 
-        {/* Sign up link */}
+        {/* Signup Link */}
         <p className="text-center text-sm text-gray-600 mt-4">
           Don’t have an account?{' '}
           <Link
